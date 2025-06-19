@@ -12,6 +12,7 @@ import { ZaloApiError } from "./Errors/ZaloApiError.js";
 import { GroupEventType } from "./models/GroupEvent.js";
 import { FriendEventType } from "./models/FriendEvent.js";
 import type { API } from "./zalo.js";
+import type { AttachmentSource } from "./models/Attachment.js";
 
 export const isBun = typeof Bun !== "undefined";
 
@@ -376,7 +377,7 @@ export async function decodeEventData(parsed: any, cipherKey?: string) {
     return JSON.parse(decodedData);
 }
 
-export function getMd5LargeFileObject(filePath: string, fileSize: number) {
+export function getMd5LargeFileObject(source: AttachmentSource, fileSize: number) {
     return new Promise<{
         currentChunk: number;
         data: string;
@@ -385,7 +386,7 @@ export function getMd5LargeFileObject(filePath: string, fileSize: number) {
             chunks = Math.ceil(fileSize / chunkSize),
             currentChunk = 0,
             spark = new SparkMD5.ArrayBuffer(),
-            buffer = await fs.promises.readFile(filePath);
+            buffer = typeof source == "string" ? await fs.promises.readFile(source) : source.data;
 
         function loadNext() {
             let start = currentChunk * chunkSize,
@@ -511,6 +512,7 @@ export function getGroupEventType(act: string) {
     if (act == "remove_member") return GroupEventType.REMOVE_MEMBER;
     if (act == "block_member") return GroupEventType.BLOCK_MEMBER;
     if (act == "update_setting") return GroupEventType.UPDATE_SETTING;
+    if (act == "update_avatar") return GroupEventType.UPDATE_AVATAR;
     if (act == "update") return GroupEventType.UPDATE;
     if (act == "new_link") return GroupEventType.NEW_LINK;
     if (act == "add_admin") return GroupEventType.ADD_ADMIN;
@@ -664,4 +666,34 @@ export function apiFactory<T>() {
 
 export function generateZaloUUID(userAgent: string) {
     return crypto.randomUUID() + "-" + cryptojs.MD5(userAgent).toString();
+}
+
+/**
+ * Encrypts a 4-digit PIN to a 32-character hex string
+ * @param pin 4-digit PIN number
+ * @returns 32-character hex string
+ */
+export function encryptPin(pin: number): string {
+    const pinStr = pin.toString().padStart(4, "0");
+    return crypto.createHash("md5").update(pinStr).digest("hex");
+}
+
+/**
+ * Decrypts a 32-character hex string back to 4-digit PIN
+ * Note: This is a one-way hash, so we can only verify if a PIN matches the hash
+ * @param encryptedPin 32-character hex string
+ * @param pin 4-digit PIN to verify
+ * @returns true if the PIN matches the hash
+ */
+// const encryptedPin = api.getHiddenConversPin().pin;
+// checking pin created..
+// const isValid = decryptPin(encryptedPin, 1234); // true if pin created is 1234
+// const isInvalid = decryptPin(encryptedPin, 5678); // false if not pin created is 5678
+export function decryptPin(encryptedPin: string, pin?: number): boolean {
+    if (pin !== undefined) {
+        const pinStr = pin.toString().padStart(4, "0");
+        const hash = crypto.createHash("md5").update(pinStr).digest("hex");
+        return hash === encryptedPin;
+    }
+    return false;
 }
